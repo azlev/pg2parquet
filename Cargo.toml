@@ -1,0 +1,8 @@
+[package]
+name = "pg2parquet"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+chrono = "0.4.26"
+libpq = "3.1.0"
