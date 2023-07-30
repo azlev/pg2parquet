@@ -16,25 +16,26 @@ pub const STANDBY_STATUS_UPDATE_ID: u8 = b'r';
 // pub const ARCHIVE_OR_MANIFEST_DATA_ID: u8 = b'd';
 // pub const PROGRESS_REPORT_ID: u8 = b'p';
 
-const BEGIN_ID: u8 = b'B';
-const MESSAGE_ID: u8 = b'M';
-const COMMIT_ID: u8 = b'C';
-const ORIGIN_ID: u8 = b'O';
-const RELATION_ID: u8 = b'R';
-const TYPE_ID: u8 = b'Y';
-const INSERT_ID: u8 = b'I';
-const UPDATE_ID: u8 = b'U';
-const DELETE_ID: u8 = b'D';
-const TRUNCATE_ID: u8 = b'T';
-const STREAM_START_ID: u8 = b'S';
-const STREAM_STOP_ID: u8 = b'E';
-const STREAM_COMMIT_ID: u8 = b'c';
-const STREAM_ABORT_ID: u8 = b'A';
-const BEGIN_PREPARE_ID: u8 = b'b';
-const PREPARE_ID: u8 = b'P';
-const COMMIT_PREPARED_ID: u8 = b'K';
-const ROLLBACK_PREPARED_ID: u8 = b'r';
-const STREAM_PREPARE_ID: u8 = b'p';
+// postgres/src/include/replication/logicalproto.h
+const LOGICAL_REP_MSG_BEGIN: u8 = b'B';
+const LOGICAL_REP_MSG_COMMIT: u8 = b'C';
+const LOGICAL_REP_MSG_ORIGIN: u8 = b'O';
+const LOGICAL_REP_MSG_INSERT: u8 = b'I';
+const LOGICAL_REP_MSG_UPDATE: u8 = b'U';
+const LOGICAL_REP_MSG_DELETE: u8 = b'D';
+const LOGICAL_REP_MSG_TRUNCATE: u8 = b'T';
+const LOGICAL_REP_MSG_RELATION: u8 = b'R';
+const LOGICAL_REP_MSG_TYPE: u8 = b'Y';
+const LOGICAL_REP_MSG_MESSAGE: u8 = b'M';
+const LOGICAL_REP_MSG_BEGIN_PREPARE: u8 = b'b';
+const LOGICAL_REP_MSG_PREPARE: u8 = b'P';
+const LOGICAL_REP_MSG_COMMIT_PREPARED: u8 = b'K';
+const LOGICAL_REP_MSG_ROLLBACK_PREPARED: u8 = b'r';
+const LOGICAL_REP_MSG_STREAM_START: u8 = b'S';
+const LOGICAL_REP_MSG_STREAM_STOP: u8 = b'E';
+const LOGICAL_REP_MSG_STREAM_COMMIT: u8 = b'c';
+const LOGICAL_REP_MSG_STREAM_ABORT: u8 = b'A';
+const LOGICAL_REP_MSG_STREAM_PREPARE: u8 = b'p';
 
 pub fn parse_keepalive(buffer: &PqBytes) -> (Lsn, Pgtime, bool) {
     let tmp: [u8; 8] = buffer[1..9].try_into().unwrap();
@@ -92,10 +93,16 @@ pub fn parse_xlogdata(buffer: &PqBytes) -> Result<(Lsn, Lsn, Pgtime, u8), ParseE
     let id = buffer[pos];
     pos = pos + 1;
     match id {
-        STREAM_START_ID | STREAM_STOP_ID | STREAM_COMMIT_ID | STREAM_ABORT_ID
-        | BEGIN_PREPARE_ID | PREPARE_ID | COMMIT_PREPARED_ID | ROLLBACK_PREPARED_ID
-        | STREAM_PREPARE_ID => eprintln!("DEBUG: not mesage {} skipped", id),
-        BEGIN_ID => {
+        LOGICAL_REP_MSG_STREAM_START
+        | LOGICAL_REP_MSG_STREAM_STOP
+        | LOGICAL_REP_MSG_STREAM_COMMIT
+        | LOGICAL_REP_MSG_STREAM_ABORT
+        | LOGICAL_REP_MSG_BEGIN_PREPARE
+        | LOGICAL_REP_MSG_PREPARE
+        | LOGICAL_REP_MSG_COMMIT_PREPARED
+        | LOGICAL_REP_MSG_ROLLBACK_PREPARED
+        | LOGICAL_REP_MSG_STREAM_PREPARE => eprintln!("DEBUG: not mesage {} skipped", id),
+        LOGICAL_REP_MSG_BEGIN => {
             let ret = parse_lr_begin_message(buffer, pos);
             pos = ret.0;
             let (lsn_final, transaction_start, xid) = (ret.1, ret.2, ret.3);
@@ -104,20 +111,22 @@ pub fn parse_xlogdata(buffer: &PqBytes) -> Result<(Lsn, Lsn, Pgtime, u8), ParseE
                 lsn_final, transaction_start, xid
             );
         }
-        MESSAGE_ID => eprintln!("message"),
-        COMMIT_ID => eprintln!("commit"),
-        ORIGIN_ID => eprintln!("origin"),
-        RELATION_ID => eprintln!("relation"),
-        TYPE_ID => eprintln!("type"),
-        INSERT_ID => {
+        LOGICAL_REP_MSG_MESSAGE => eprintln!("message"),
+        LOGICAL_REP_MSG_COMMIT => eprintln!("commit"),
+        LOGICAL_REP_MSG_ORIGIN => eprintln!("origin"),
+        LOGICAL_REP_MSG_RELATION => eprintln!("relation"),
+        LOGICAL_REP_MSG_TYPE => eprintln!("type"),
+        LOGICAL_REP_MSG_INSERT => {
             let ret = parse_lr_insert_message(buffer, pos);
             let tuple = &buffer[ret.0..buffer.len()];
-            eprintln!("insert, xid: {}, oid: {}, new_tuple: {}, tuple: {:#?}",
-                ret.1, ret.2, ret.3, tuple);
-        },
-        UPDATE_ID => eprintln!("update"),
-        DELETE_ID => eprintln!("delete"),
-        TRUNCATE_ID => eprintln!("truncate"),
+            eprintln!(
+                "insert, xid: {}, oid: {}, new_tuple: {}, tuple: {:#?}",
+                ret.1, ret.2, ret.3, tuple
+            );
+        }
+        LOGICAL_REP_MSG_UPDATE => eprintln!("update"),
+        LOGICAL_REP_MSG_DELETE => eprintln!("delete"),
+        LOGICAL_REP_MSG_TRUNCATE => eprintln!("truncate"),
         _ => {
             return Result::Err(ParseError {
                 error_message: format!("Message type '{}' not implemented", id),
