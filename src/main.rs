@@ -27,10 +27,9 @@ fn main() {
 
         match buffer[0] {
             replication_protocol::PRIMARY_KEEPALIVE_ID => {
-                let ka = replication_protocol::parse_keepalive(&buffer);
-                println!("keepalive, LSN: {}, {}, {}", ka.0, ka.1, ka.2);
-                if ka.2 == true {
-                    println!("reply requested!");
+                let (lsn, time, should_reply) = replication_protocol::parse_keepalive(&buffer);
+                println!("keepalive, LSN: {}, {}, {}", lsn, time, should_reply);
+                if should_reply {
                     let reply = replication_protocol::create_keepalive();
                     client
                         .put_copy_data(&reply)
@@ -40,7 +39,9 @@ fn main() {
                 }
             }
             replication_protocol::XLOG_DATA_ID => {
-                println!("XLOG_DATA_ID: {}", buffer[0]);
+                let (start, current, time, message, size) = replication_protocol::parse_xlogdata(&buffer);
+                println!("XLogData, start {}, current {}, time {}, message: {}, size: {}",
+                start, current, time, message as char, size)
             }
             _ => eprintln!("Unrecognized message: {}", buffer[0]),
         }

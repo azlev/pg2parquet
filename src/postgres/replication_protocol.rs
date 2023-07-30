@@ -40,3 +40,15 @@ pub fn create_keepalive() -> [u8; 34] {
     reply[33] = 1;
     reply
 }
+
+// https://www.postgresql.org/docs/15/protocol-logicalrep-message-formats.html
+pub fn parse_xlogdata(buffer: &PqBytes) -> (Lsn, Lsn, Pgtime, u8, usize) {
+    let tmp: [u8; 8] = buffer[1..9].try_into().unwrap();
+    let start: Lsn = Lsn::lsn_from_be_bytes(tmp);
+    let tmp2: [u8; 8] = buffer[9..17].try_into().unwrap();
+    let current: Lsn = Lsn::lsn_from_be_bytes(tmp2);
+    let tmp3: [u8; 8] = buffer[17..25].try_into().unwrap();
+    let time: Pgtime = Pgtime::from_be_bytes(tmp3);
+    let size = buffer.len() - (1 + 8 + 8 + 8 + 1);
+    (start, current, time, buffer[25], size)
+}
