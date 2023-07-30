@@ -39,9 +39,12 @@ fn main() {
                 }
             }
             replication_protocol::XLOG_DATA_ID => {
-                let (start, current, time, message, size) = replication_protocol::parse_xlogdata(&buffer);
-                println!("XLogData, start {}, current {}, time {}, message: {}, size: {}",
-                start, current, time, message as char, size)
+                let ret = replication_protocol::parse_xlogdata(&buffer);
+                let (start, current, time, message) = ret.unwrap();
+                println!(
+                    "XLogData, start {}, current {}, time {}, message: {}",
+                    start, current, time, message as char
+                )
             }
             _ => eprintln!("Unrecognized message: {}", buffer[0]),
         }
