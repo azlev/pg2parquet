@@ -89,21 +89,16 @@ pub fn parse_xlogdata(buffer: &PqBytes) -> Result<(Lsn, Lsn, Pgtime, u8), ParseE
     let tmp3: [u8; 8] = buffer[pos..(pos + 8)].try_into().unwrap();
     pos = pos + 8;
     let time: Pgtime = Pgtime::from_be_bytes(tmp3);
-    match buffer[pos] {
+    let id = buffer[pos];
+    pos = pos + 1;
+    match id {
         STREAM_START_ID | STREAM_STOP_ID | STREAM_COMMIT_ID | STREAM_ABORT_ID
         | BEGIN_PREPARE_ID | PREPARE_ID | COMMIT_PREPARED_ID | ROLLBACK_PREPARED_ID
-        | STREAM_PREPARE_ID => eprintln!("DEBUG: not implemmessage {} skipped", buffer[pos]),
+        | STREAM_PREPARE_ID => eprintln!("DEBUG: not mesage {} skipped", id),
         BEGIN_ID => {
-            pos = pos + 1;
-            let tmp: [u8; 8] = buffer[pos..(pos + 8)].try_into().unwrap();
-            pos = pos + 8;
-            let lsn_final: Lsn = Lsn::lsn_from_be_bytes(tmp);
-            let tmp2: [u8; 8] = buffer[pos..(pos + 8)].try_into().unwrap();
-            pos = pos + 8;
-            let transaction_start: Pgtime = Pgtime::from_be_bytes(tmp2);
-            let tmp3: [u8; 4] = buffer[pos..(pos + 4)].try_into().unwrap();
-            let xid: i32 = i32::from_be_bytes(tmp3);
-            //pos = pos + 4;
+            let ret = parse_lr_begin_message(buffer, pos);
+            pos = ret.0;
+            let (lsn_final, transaction_start, xid) = (ret.1, ret.2, ret.3);
             eprintln!(
                 "begin: LSN_FINAL: {}, time: {}, xid: {}",
                 lsn_final, transaction_start, xid
@@ -114,15 +109,51 @@ pub fn parse_xlogdata(buffer: &PqBytes) -> Result<(Lsn, Lsn, Pgtime, u8), ParseE
         ORIGIN_ID => eprintln!("origin"),
         RELATION_ID => eprintln!("relation"),
         TYPE_ID => eprintln!("type"),
-        INSERT_ID => eprintln!("insert"),
+        INSERT_ID => {
+            let ret = parse_lr_insert_message(buffer, pos);
+            let tuple = &buffer[ret.0..buffer.len()];
+            eprintln!("insert, xid: {}, oid: {}, new_tuple: {}, tuple: {:#?}",
+                ret.1, ret.2, ret.3, tuple);
+        },
         UPDATE_ID => eprintln!("update"),
         DELETE_ID => eprintln!("delete"),
         TRUNCATE_ID => eprintln!("truncate"),
         _ => {
             return Result::Err(ParseError {
-                error_message: format!("Message type '{}' not implemented", buffer[pos]),
+                error_message: format!("Message type '{}' not implemented", id),
             })
         }
     };
     Result::Ok((start, current, time, buffer[25]))
+}
+
+fn parse_lr_begin_message(buffer: &PqBytes, mut position: usize) -> (usize, Lsn, Pgtime, i32) {
+    let tmp: [u8; 8] = buffer[position..(position + 8)].try_into().unwrap();
+    position = position + 8;
+    let lsn_final: Lsn = Lsn::lsn_from_be_bytes(tmp);
+
+    let tmp2: [u8; 8] = buffer[position..(position + 8)].try_into().unwrap();
+    position = position + 8;
+    let transaction_start: Pgtime = Pgtime::from_be_bytes(tmp2);
+
+    let tmp3: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
+    position = position + 4;
+    let xid: i32 = i32::from_be_bytes(tmp3);
+
+    (position, lsn_final, transaction_start, xid)
+}
+
+fn parse_lr_insert_message(buffer: &PqBytes, mut position: usize) -> (usize, i32, i32, u8) {
+    let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
+    position = position + 4;
+    let xid: i32 = i32::from_be_bytes(tmp);
+
+    let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
+    position = position + 4;
+    let oid: i32 = i32::from_be_bytes(tmp);
+
+    let new_tuple: u8 = buffer[position];
+    position = position + 1;
+
+    (position, xid, oid, new_tuple)
 }
