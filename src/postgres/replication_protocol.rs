@@ -92,6 +92,7 @@ pub fn parse_xlogdata(buffer: &PqBytes) -> Result<(Lsn, Lsn, Pgtime, u8), ParseE
     let time: Pgtime = Pgtime::from_be_bytes(tmp3);
     let id = buffer[pos];
     pos = pos + 1;
+    let streaming = false;
     match id {
         LOGICAL_REP_MSG_STREAM_START
         | LOGICAL_REP_MSG_STREAM_STOP
@@ -117,11 +118,11 @@ pub fn parse_xlogdata(buffer: &PqBytes) -> Result<(Lsn, Lsn, Pgtime, u8), ParseE
         LOGICAL_REP_MSG_RELATION => eprintln!("relation"),
         LOGICAL_REP_MSG_TYPE => eprintln!("type"),
         LOGICAL_REP_MSG_INSERT => {
-            let ret = parse_lr_insert_message(buffer, pos);
+            let ret = parse_lr_insert_message(buffer, pos, streaming);
             let tuple = &buffer[ret.0..buffer.len()];
             eprintln!(
                 "insert, xid: {}, oid: {}, new_tuple: {}, tuple: {:#?}",
-                ret.1, ret.2, ret.3, tuple
+                ret.1, ret.2, ret.3 as char, tuple
             );
         }
         LOGICAL_REP_MSG_UPDATE => eprintln!("update"),
@@ -152,11 +153,13 @@ fn parse_lr_begin_message(buffer: &PqBytes, mut position: usize) -> (usize, Lsn,
     (position, lsn_final, transaction_start, xid)
 }
 
-fn parse_lr_insert_message(buffer: &PqBytes, mut position: usize) -> (usize, i32, i32, u8) {
-    let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
-    position = position + 4;
-    let xid: i32 = i32::from_be_bytes(tmp);
-
+fn parse_lr_insert_message(buffer: &PqBytes, mut position: usize, streaming: bool) -> (usize, i32, i32, u8) {
+    let mut xid: i32 = 0;
+    if streaming {
+        let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
+        position = position + 4;
+        xid = i32::from_be_bytes(tmp);
+    }
     let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
     position = position + 4;
     let oid: i32 = i32::from_be_bytes(tmp);
@@ -164,5 +167,15 @@ fn parse_lr_insert_message(buffer: &PqBytes, mut position: usize) -> (usize, i32
     let new_tuple: u8 = buffer[position];
     position = position + 1;
 
+    parse_lr_tupledata(buffer, position);
+
     (position, xid, oid, new_tuple)
+}
+
+fn parse_lr_tupledata(buffer: &PqBytes, mut position: usize) -> usize {
+    let tmp: [u8; 2] = buffer[position..(position + 2)].try_into().unwrap();
+    position = position + 2;
+    let ncolumns = i16::from_be_bytes(tmp);
+    println!("Number of columns: {}", ncolumns);
+    position
 }

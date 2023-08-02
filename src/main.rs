@@ -11,9 +11,16 @@ fn main() {
 
     let client = Connection::new(&config.conninfo).unwrap();
 
-    let replication_command = &format!("START_REPLICATION SLOT {configslot} LOGICAL 000/000 (proto_version '3', publication_names '{configpublication}')",
+    let replication_command = &format!(
+        "START_REPLICATION SLOT {configslot} \
+    LOGICAL 000/000 \
+    (proto_version '3', \
+    publication_names '{configpublication}', \
+    messages 'on', \
+    streaming 'on')",
         configslot = config.slot,
-        configpublication = config.publication);
+        configpublication = config.publication
+    );
     eprintln!("DEBUG: {}", replication_command);
     let res = client.exec(replication_command);
 
