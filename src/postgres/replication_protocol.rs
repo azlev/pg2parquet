@@ -117,10 +117,10 @@ pub fn parse_xlogdata(buffer: &PqBytes) -> Result<(Lsn, Lsn, Pgtime, char), Pars
         LOGICAL_REP_MSG_INSERT => {
             let ret = parse_lr_insert_message(buffer, pos, streaming);
             pos = ret.0;
-            let tupledata = parse_lr_tupledata(buffer, pos);
+            let ncolumns = parse_lr_tupledata(buffer, pos);
             eprintln!(
-                "insert, xid: {}, oid: {}, new_tuple: {}, ncolumns: {}, kind: {}, size: {}",
-                ret.1, ret.2, ret.3, tupledata.0, tupledata.1, tupledata.2
+                "insert, xid: {}, oid: {}, new_tuple: {}, ncolumns: {}",
+                ret.1, ret.2, ret.3, ncolumns
             );
         }
         LOGICAL_REP_MSG_UPDATE => eprintln!("update"),
@@ -168,17 +168,26 @@ fn parse_lr_insert_message(buffer: &PqBytes, mut position: usize, streaming: boo
     (position, xid, oid, new_tuple)
 }
 
-fn parse_lr_tupledata(buffer: &PqBytes, mut position: usize) -> (i16, char, i32) {
+fn parse_lr_tupledata(buffer: &PqBytes, mut position: usize) -> (i16) {
     let tmp: [u8; 2] = buffer[position..(position + 2)].try_into().unwrap();
     position = position + 2;
     let ncolumns = i16::from_be_bytes(tmp);
 
+    for i in 0..ncolumns {
+        let (position, _, _) = parse_lr_column(buffer, position);
+    }
+    (ncolumns)
+}
+
+fn parse_lr_column(buffer: &PqBytes, mut position: usize) -> (usize, char, usize) {
     let kind: char = buffer[position] as char;
     position = position + 1;
 
     let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
     position = position + 4;
-    let length: i32 = i32::from_be_bytes(tmp);
+    let length: usize = i32::from_be_bytes(tmp).try_into().unwrap();
 
-    (ncolumns, kind, length)
+    position = position + length;
+    println!("column kind: {kind}, length: {length}");
+    (position, kind, length)
 }
