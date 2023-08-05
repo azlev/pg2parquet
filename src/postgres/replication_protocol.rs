@@ -53,7 +53,7 @@ pub fn create_keepalive() -> [u8; 34] {
     let mut reply: [u8; 34] = [0; 34];
     reply[0] = STANDBY_STATUS_UPDATE_ID;
     let now = Pgtime::now();
-    eprintln!("{}", now);
+    eprintln!("{now}");
     let dd: [u8; 8] = now.0.to_be_bytes();
     for i in 0..8 {
         reply[25 + i] = dd[i]
@@ -79,7 +79,7 @@ impl fmt::Debug for ParseError {
 }
 
 // https://www.postgresql.org/docs/15/protocol-logicalrep-message-formats.html
-pub fn parse_xlogdata(buffer: &PqBytes) -> Result<(Lsn, Lsn, Pgtime, u8), ParseError> {
+pub fn parse_xlogdata(buffer: &PqBytes) -> Result<(Lsn, Lsn, Pgtime, char), ParseError> {
     let mut pos = 1;
     let tmp: [u8; 8] = buffer[pos..(pos + 8)].try_into().unwrap();
     pos = pos + 8;
@@ -102,15 +102,12 @@ pub fn parse_xlogdata(buffer: &PqBytes) -> Result<(Lsn, Lsn, Pgtime, u8), ParseE
         | LOGICAL_REP_MSG_PREPARE
         | LOGICAL_REP_MSG_COMMIT_PREPARED
         | LOGICAL_REP_MSG_ROLLBACK_PREPARED
-        | LOGICAL_REP_MSG_STREAM_PREPARE => eprintln!("DEBUG: not mesage {} skipped", id),
+        | LOGICAL_REP_MSG_STREAM_PREPARE => eprintln!("DEBUG: not mesage {id} skipped"),
         LOGICAL_REP_MSG_BEGIN => {
             let ret = parse_lr_begin_message(buffer, pos);
             pos = ret.0;
             let (lsn_final, transaction_start, xid) = (ret.1, ret.2, ret.3);
-            eprintln!(
-                "begin: LSN_FINAL: {}, time: {}, xid: {}",
-                lsn_final, transaction_start, xid
-            );
+            eprintln!("begin: LSN_FINAL: {lsn_final}, time: {transaction_start}, xid: {xid}");
         }
         LOGICAL_REP_MSG_MESSAGE => eprintln!("message"),
         LOGICAL_REP_MSG_COMMIT => eprintln!("commit"),
@@ -131,11 +128,11 @@ pub fn parse_xlogdata(buffer: &PqBytes) -> Result<(Lsn, Lsn, Pgtime, u8), ParseE
         LOGICAL_REP_MSG_TRUNCATE => eprintln!("truncate"),
         _ => {
             return Result::Err(ParseError {
-                error_message: format!("Message type '{}' not implemented", id),
+                error_message: format!("Message type '{id}' not implemented"),
             })
         }
     };
-    Result::Ok((start, current, time, buffer[25]))
+    Result::Ok((start, current, time, buffer[25] as char))
 }
 
 fn parse_lr_begin_message(buffer: &PqBytes, mut position: usize) -> (usize, Lsn, Pgtime, i32) {

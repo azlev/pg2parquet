@@ -21,7 +21,7 @@ fn main() {
         configslot = config.slot,
         configpublication = config.publication
     );
-    eprintln!("DEBUG: {}", replication_command);
+    eprintln!("DEBUG: {replication_command}");
     let res = client.exec(replication_command);
 
     if res.status() != Status::CopyBoth {
@@ -35,7 +35,7 @@ fn main() {
         match buffer[0] {
             replication_protocol::PRIMARY_KEEPALIVE_ID => {
                 let (lsn, time, should_reply) = replication_protocol::parse_keepalive(&buffer);
-                println!("keepalive, LSN: {}, {}, {}", lsn, time, should_reply);
+                println!("keepalive, LSN: {lsn}, {time}, {should_reply}");
                 if should_reply {
                     let reply = replication_protocol::create_keepalive();
                     client
@@ -48,10 +48,7 @@ fn main() {
             replication_protocol::XLOG_DATA_ID => {
                 let ret = replication_protocol::parse_xlogdata(&buffer);
                 let (start, current, time, message) = ret.unwrap();
-                println!(
-                    "XLogData, start {}, current {}, time {}, message: {}",
-                    start, current, time, message as char
-                )
+                println!("XLogData, start {start}, current {current}, time {time}, message: {message}");
             }
             _ => eprintln!("Unrecognized message: {}", buffer[0]),
         }
