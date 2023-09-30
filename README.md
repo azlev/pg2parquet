@@ -15,12 +15,10 @@ This code is tested only in postgres 15.
 Assuming a fedora with pgdg:
 
 ```
-sudo dnf install postgresql15-devel
-PATH=/usr/pgsql-15/bin:${PATH} cargo build
+sudo dnf install postgresql16-devel
+PATH=/usr/pgsql-16/bin:${PATH} cargo build
 
 ```
-
-`cargo build`
 
 ## Using
 
