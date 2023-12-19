@@ -30,7 +30,7 @@ fn main() {
     }
 
     loop {
-        let buffer = client.copy_data(false).expect("Error while reading data");
+        let buffer = client.copy_data(false).expect("Error while reading data. Check if the publication was created before the slot");
 
         match buffer[0] {
             replication_protocol::PRIMARY_KEEPALIVE_ID => {

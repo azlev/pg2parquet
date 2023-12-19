@@ -81,6 +81,6 @@ mod tests {
         env::set_var("PG2PARQUET_OUTPUT", ".");
         env::set_var("PG2PARQUET_conninfo", "host=localhost");
 
-        let config = build_config();
+        let _ = build_config();
     }
 }

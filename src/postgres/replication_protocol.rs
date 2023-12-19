@@ -105,7 +105,7 @@ pub fn parse_xlogdata(buffer: &PqBytes) -> Result<(Lsn, Lsn, Pgtime, char), Pars
         | LOGICAL_REP_MSG_STREAM_PREPARE => eprintln!("DEBUG: not mesage {id} skipped"),
         LOGICAL_REP_MSG_BEGIN => {
             let ret = parse_lr_begin_message(buffer, pos);
-            pos = ret.0;
+            //pos = ret.0;
             let (lsn_final, transaction_start, xid) = (ret.1, ret.2, ret.3);
             eprintln!("begin: LSN_FINAL: {lsn_final}, time: {transaction_start}, xid: {xid}");
         }
@@ -168,15 +168,15 @@ fn parse_lr_insert_message(buffer: &PqBytes, mut position: usize, streaming: boo
     (position, xid, oid, new_tuple)
 }
 
-fn parse_lr_tupledata(buffer: &PqBytes, mut position: usize) -> (i16) {
+fn parse_lr_tupledata(buffer: &PqBytes, mut position: usize) -> i16 {
     let tmp: [u8; 2] = buffer[position..(position + 2)].try_into().unwrap();
     position = position + 2;
     let ncolumns = i16::from_be_bytes(tmp);
 
-    for i in 0..ncolumns {
-        let (position, _, _) = parse_lr_column(buffer, position);
+    for _i in 0..ncolumns {
+        (position, _, _) = parse_lr_column(buffer, position);
     }
-    (ncolumns)
+    ncolumns
 }
 
 fn parse_lr_column(buffer: &PqBytes, mut position: usize) -> (usize, char, usize) {
