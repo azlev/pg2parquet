@@ -78,7 +78,7 @@ impl fmt::Debug for ParseError {
     }
 }
 
-// https://www.postgresql.org/docs/15/protocol-logicalrep-message-formats.html
+// https://www.postgresql.org/docs/16/protocol-logicalrep-message-formats.html
 pub fn parse_xlogdata(buffer: &PqBytes) -> Result<(Lsn, Lsn, Pgtime, char), ParseError> {
     let mut pos = 1;
     let tmp: [u8; 8] = buffer[pos..(pos + 8)].try_into().unwrap();
