@@ -1,3 +1,5 @@
+use libpq::connection::PqBytes;
+
 pub struct Lsn(pub u64);
 
 impl std::fmt::Display for Lsn {
@@ -7,7 +9,9 @@ impl std::fmt::Display for Lsn {
 }
 
 impl Lsn {
-    pub fn lsn_from_be_bytes(buffer: [u8; 8]) -> Lsn {
-        Lsn(u64::from_be_bytes(buffer))
+    pub fn lsn_from_buffer(buffer: &PqBytes, mut position: usize) -> (usize, Lsn) {
+        let tmp: [u8; 8] = buffer[position..(position + 8)].try_into().unwrap();
+        position += 8;
+        (position, Lsn(u64::from_be_bytes(tmp)))
     }
 }

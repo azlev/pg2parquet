@@ -38,8 +38,8 @@ const LOGICAL_REP_MSG_STREAM_ABORT: u8 = b'A';
 const LOGICAL_REP_MSG_STREAM_PREPARE: u8 = b'p';
 
 pub fn parse_keepalive(buffer: &PqBytes) -> (Lsn, Pgtime, bool) {
-    let tmp: [u8; 8] = buffer[1..9].try_into().unwrap();
-    let lsn = Lsn::lsn_from_be_bytes(tmp);
+    let lsn: Lsn;
+    (_, lsn) = Lsn::lsn_from_buffer(buffer, 1);
     let tmp2: [u8; 8] = buffer[9..17].try_into().unwrap();
     let pgtime = Pgtime::from_be_bytes(tmp2);
     let should_reply = match buffer[17] {
@@ -81,15 +81,16 @@ impl fmt::Debug for ParseError {
 // https://www.postgresql.org/docs/16/protocol-logicalrep-message-formats.html
 pub fn parse_xlogdata(buffer: &PqBytes) -> Result<(Lsn, Lsn, Pgtime, char), ParseError> {
     let mut pos = 1;
+
+    let start: Lsn;
+    (pos, start) = Lsn::lsn_from_buffer(buffer, pos);
+
+    let current: Lsn;
+    (pos, current) = Lsn::lsn_from_buffer(buffer, pos);
+
     let tmp: [u8; 8] = buffer[pos..(pos + 8)].try_into().unwrap();
     pos += 8;
-    let start: Lsn = Lsn::lsn_from_be_bytes(tmp);
-    let tmp2: [u8; 8] = buffer[pos..(pos + 8)].try_into().unwrap();
-    pos += 8;
-    let current: Lsn = Lsn::lsn_from_be_bytes(tmp2);
-    let tmp3: [u8; 8] = buffer[pos..(pos + 8)].try_into().unwrap();
-    pos += 8;
-    let time: Pgtime = Pgtime::from_be_bytes(tmp3);
+    let time: Pgtime = Pgtime::from_be_bytes(tmp);
     let id = buffer[pos];
     pos += 1;
     let streaming = false;
@@ -138,9 +139,8 @@ pub fn parse_xlogdata(buffer: &PqBytes) -> Result<(Lsn, Lsn, Pgtime, char), Pars
 }
 
 fn parse_lr_begin_message(buffer: &PqBytes, mut position: usize) -> (usize, Lsn, Pgtime, i32) {
-    let tmp: [u8; 8] = buffer[position..(position + 8)].try_into().unwrap();
-    position += 8;
-    let lsn_final: Lsn = Lsn::lsn_from_be_bytes(tmp);
+    let lsn_final: Lsn;
+    (position, lsn_final) = Lsn::lsn_from_buffer(buffer, position);
 
     let tmp2: [u8; 8] = buffer[position..(position + 8)].try_into().unwrap();
     position += 8;
