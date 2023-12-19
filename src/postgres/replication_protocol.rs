@@ -82,16 +82,16 @@ impl fmt::Debug for ParseError {
 pub fn parse_xlogdata(buffer: &PqBytes) -> Result<(Lsn, Lsn, Pgtime, char), ParseError> {
     let mut pos = 1;
     let tmp: [u8; 8] = buffer[pos..(pos + 8)].try_into().unwrap();
-    pos = pos + 8;
+    pos += 8;
     let start: Lsn = Lsn::lsn_from_be_bytes(tmp);
     let tmp2: [u8; 8] = buffer[pos..(pos + 8)].try_into().unwrap();
-    pos = pos + 8;
+    pos += 8;
     let current: Lsn = Lsn::lsn_from_be_bytes(tmp2);
     let tmp3: [u8; 8] = buffer[pos..(pos + 8)].try_into().unwrap();
-    pos = pos + 8;
+    pos += 8;
     let time: Pgtime = Pgtime::from_be_bytes(tmp3);
     let id = buffer[pos];
-    pos = pos + 1;
+    pos += 1;
     let streaming = false;
     match id {
         LOGICAL_REP_MSG_STREAM_START
@@ -112,7 +112,9 @@ pub fn parse_xlogdata(buffer: &PqBytes) -> Result<(Lsn, Lsn, Pgtime, char), Pars
         LOGICAL_REP_MSG_MESSAGE => eprintln!("message"),
         LOGICAL_REP_MSG_COMMIT => eprintln!("commit"),
         LOGICAL_REP_MSG_ORIGIN => eprintln!("origin"),
-        LOGICAL_REP_MSG_RELATION => eprintln!("relation"),
+        LOGICAL_REP_MSG_RELATION => {
+            _ = parse_lr_relation(buffer, pos, streaming);
+        }
         LOGICAL_REP_MSG_TYPE => eprintln!("type"),
         LOGICAL_REP_MSG_INSERT => {
             let ret = parse_lr_insert_message(buffer, pos, streaming);
@@ -137,15 +139,15 @@ pub fn parse_xlogdata(buffer: &PqBytes) -> Result<(Lsn, Lsn, Pgtime, char), Pars
 
 fn parse_lr_begin_message(buffer: &PqBytes, mut position: usize) -> (usize, Lsn, Pgtime, i32) {
     let tmp: [u8; 8] = buffer[position..(position + 8)].try_into().unwrap();
-    position = position + 8;
+    position += 8;
     let lsn_final: Lsn = Lsn::lsn_from_be_bytes(tmp);
 
     let tmp2: [u8; 8] = buffer[position..(position + 8)].try_into().unwrap();
-    position = position + 8;
+    position += 8;
     let transaction_start: Pgtime = Pgtime::from_be_bytes(tmp2);
 
     let tmp3: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
-    position = position + 4;
+    position += 4;
     let xid: i32 = i32::from_be_bytes(tmp3);
 
     (position, lsn_final, transaction_start, xid)
@@ -155,39 +157,102 @@ fn parse_lr_insert_message(buffer: &PqBytes, mut position: usize, streaming: boo
     let mut xid: i32 = 0;
     if streaming {
         let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
-        position = position + 4;
+        position += 4;
         xid = i32::from_be_bytes(tmp);
     }
     let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
-    position = position + 4;
+    position += 4;
     let oid: i32 = i32::from_be_bytes(tmp);
 
     let new_tuple: char = buffer[position] as char;
-    position = position + 1;
+    position += 1;
 
     (position, xid, oid, new_tuple)
 }
 
+fn parse_lr_relation(buffer: &PqBytes, mut position: usize, streaming: bool) -> usize {
+    let mut _xid: i32 = 0;
+    if streaming {
+        let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
+        position += 4;
+        _xid = i32::from_be_bytes(tmp);
+    }
+    let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
+    position += 4;
+    let oid: i32 = i32::from_be_bytes(tmp);
+
+    let mut namespace: String = String::from("");
+    while buffer[position] != b'\0' {
+        namespace.push(buffer[position] as char);
+        position += 1;
+    }
+    position += 1;
+
+    let mut relation: String = String::from("");
+    while buffer[position] != b'\0' {
+        relation.push(buffer[position] as char);
+        position += 1;
+    }
+    position += 1;
+
+    let replica_identity = buffer[position];
+    position += 1;
+
+    let tmp: [u8; 2] = buffer[position..(position + 2)].try_into().unwrap();
+    position += 2;
+    let columns: u16 = u16::from_be_bytes(tmp);
+
+    for _i in 0..columns {
+        position = parse_lr_relation_column(buffer, position)
+    }
+
+    println!("relation: oid: {oid}, namespace: {namespace}, relation: {relation}, replica_identity: {replica_identity}, columns: {columns}");
+    position
+}
+
+fn parse_lr_relation_column(buffer: &PqBytes, mut position: usize) -> usize {
+    let flags = buffer[position];
+
+    position += 1;
+    let mut name: String = String::from("");
+    while buffer[position] != b'\0' {
+        name.push(buffer[position] as char);
+        position += 1;
+    }
+    position += 1;
+
+    let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
+    position += 4;
+    let oid: i32 = i32::from_be_bytes(tmp);
+
+    let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
+    position += 4;
+    let modifiers: i32 = i32::from_be_bytes(tmp);
+
+    println!("column: {name}, flags: {flags}, oid: {oid}, mod: {modifiers}");
+    position
+}
+
 fn parse_lr_tupledata(buffer: &PqBytes, mut position: usize) -> i16 {
     let tmp: [u8; 2] = buffer[position..(position + 2)].try_into().unwrap();
-    position = position + 2;
+    position += 2;
     let ncolumns = i16::from_be_bytes(tmp);
 
-    for _i in 0..ncolumns {
-        (position, _, _) = parse_lr_column(buffer, position);
+    for _i in 1..ncolumns {
+        (position, _, _) = parse_lr_tupledata_column(buffer, position);
     }
     ncolumns
 }
 
-fn parse_lr_column(buffer: &PqBytes, mut position: usize) -> (usize, char, usize) {
+fn parse_lr_tupledata_column(buffer: &PqBytes, mut position: usize) -> (usize, char, usize) {
     let kind: char = buffer[position] as char;
-    position = position + 1;
+    position += 1;
 
     let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
-    position = position + 4;
+    position += 4;
     let length: usize = i32::from_be_bytes(tmp).try_into().unwrap();
 
-    position = position + length;
+    position += length;
     println!("column kind: {kind}, length: {length}");
     (position, kind, length)
 }
