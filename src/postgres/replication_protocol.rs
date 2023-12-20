@@ -40,7 +40,7 @@ const LOGICAL_REP_MSG_STREAM_PREPARE: u8 = b'p';
 
 pub fn parse_keepalive(buffer: &PqBytes) -> (Lsn, Pgtime, bool) {
     let lsn: Lsn;
-    (_, lsn) = Lsn::lsn_from_buffer(buffer, 1);
+    (_, lsn) = Lsn::from_buffer(buffer, 1);
     let tmp2: [u8; 8] = buffer[9..17].try_into().unwrap();
     let pgtime = Pgtime::from_be_bytes(tmp2);
     let should_reply = match buffer[17] {
@@ -94,10 +94,10 @@ pub fn parse_xlogdata(buffer: &PqBytes) -> Result<(Lsn, Lsn, Pgtime, char), Pars
     let mut pos = 1;
 
     let start: Lsn;
-    (pos, start) = Lsn::lsn_from_buffer(buffer, pos);
+    (pos, start) = Lsn::from_buffer(buffer, pos);
 
     let current: Lsn;
-    (pos, current) = Lsn::lsn_from_buffer(buffer, pos);
+    (pos, current) = Lsn::from_buffer(buffer, pos);
 
     let tmp: [u8; 8] = buffer[pos..(pos + 8)].try_into().unwrap();
     pos += 8;
@@ -163,7 +163,7 @@ pub fn parse_xlogdata(buffer: &PqBytes) -> Result<(Lsn, Lsn, Pgtime, char), Pars
 
 fn parse_lr_begin_message(buffer: &PqBytes, mut position: usize) -> (usize, Lsn, Pgtime, i32) {
     let lsn_final: Lsn;
-    (position, lsn_final) = Lsn::lsn_from_buffer(buffer, position);
+    (position, lsn_final) = Lsn::from_buffer(buffer, position);
 
     let tmp2: [u8; 8] = buffer[position..(position + 8)].try_into().unwrap();
     position += 8;

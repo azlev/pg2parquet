@@ -9,9 +9,24 @@ impl std::fmt::Display for Lsn {
 }
 
 impl Lsn {
-    pub fn lsn_from_buffer(buffer: &PqBytes, mut position: usize) -> (usize, Lsn) {
+    pub fn from_be_bytes(bytes: [u8; 8]) -> Lsn {
+        Lsn(u64::from_be_bytes(bytes))
+    }
+    pub fn from_buffer(buffer: &PqBytes, mut position: usize) -> (usize, Lsn) {
         let tmp: [u8; 8] = buffer[position..(position + 8)].try_into().unwrap();
         position += 8;
-        (position, Lsn(u64::from_be_bytes(tmp)))
+        (position, Lsn::from_be_bytes(tmp))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::postgres::pglsn::Lsn;
+
+    #[test]
+    fn lsn_zero() {
+        let bytes: [u8; 8] = [0, 0, 0, 0, 0, 0, 0, 0];
+        let lsn = Lsn::from_be_bytes(bytes);
+        assert_eq!(format!("{lsn}"), "0/0");
     }
 }
