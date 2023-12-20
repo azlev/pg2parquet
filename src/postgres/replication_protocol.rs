@@ -79,7 +79,7 @@ impl fmt::Debug for ParseError {
 }
 
 fn parse_string(buffer: &PqBytes, mut position: usize) -> (usize, String) {
-    let mut name: String = String::from("");
+    let mut name: String = String::new();
     while buffer[position] != b'\0' {
         name.push(buffer[position] as char);
         position += 1;
@@ -130,7 +130,7 @@ pub fn parse_xlogdata(buffer: &PqBytes) -> Result<(Lsn, Lsn, Pgtime, char), Pars
         LOGICAL_REP_MSG_INSERT => {
             let ret = parse_lr_insert_message(buffer, pos, streaming);
             pos = ret.0;
-            let ncolumns = parse_lr_tupledata(buffer, pos);
+            let (_, ncolumns) = parse_lr_tupledata(buffer, pos);
             eprintln!(
                 "insert, xid: {}, oid: {}, new_tuple: {}, ncolumns: {}",
                 ret.1, ret.2, ret.3, ncolumns
@@ -163,23 +163,6 @@ fn parse_lr_begin_message(buffer: &PqBytes, mut position: usize) -> (usize, Lsn,
     (position, lsn_final, transaction_start, xid)
 }
 
-fn parse_lr_insert_message(buffer: &PqBytes, mut position: usize, streaming: bool) -> (usize, i32, i32, char) {
-    let mut xid: i32 = 0;
-    if streaming {
-        let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
-        position += 4;
-        xid = i32::from_be_bytes(tmp);
-    }
-    let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
-    position += 4;
-    let oid: i32 = i32::from_be_bytes(tmp);
-
-    let new_tuple: char = buffer[position] as char;
-    position += 1;
-
-    (position, xid, oid, new_tuple)
-}
-
 fn parse_lr_relation(buffer: &PqBytes, mut position: usize, streaming: bool) -> usize {
     let mut _xid: i32 = 0;
     if streaming {
@@ -193,7 +176,6 @@ fn parse_lr_relation(buffer: &PqBytes, mut position: usize, streaming: bool) -> 
 
     let namespace: String;
     (position, namespace) = parse_string(buffer, position);
-
 
     let relation: String;
     (position, relation) = parse_string(buffer, position);
@@ -228,30 +210,71 @@ fn parse_lr_relation_column(buffer: &PqBytes, mut position: usize) -> usize {
     position += 4;
     let modifiers: i32 = i32::from_be_bytes(tmp);
 
-    println!("column: {name}, flags: {flags}, oid: {oid}, mod: {modifiers}");
+    println!("\tcolumn: {name}, flags: {flags}, oid: {oid}, mod: {modifiers}");
     position
 }
 
-fn parse_lr_tupledata(buffer: &PqBytes, mut position: usize) -> i16 {
+fn parse_lr_insert_message(
+    buffer: &PqBytes,
+    mut position: usize,
+    streaming: bool,
+) -> (usize, i32, i32, char) {
+    let mut xid: i32 = 0;
+    if streaming {
+        let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
+        position += 4;
+        xid = i32::from_be_bytes(tmp);
+    }
+
+    let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
+    position += 4;
+    let oid: i32 = i32::from_be_bytes(tmp);
+
+    let new_tuple: char = buffer[position] as char;
+    position += 1;
+
+    (position, xid, oid, new_tuple)
+}
+
+fn parse_lr_tupledata(buffer: &PqBytes, mut position: usize) -> (usize, i16) {
     let tmp: [u8; 2] = buffer[position..(position + 2)].try_into().unwrap();
     position += 2;
     let ncolumns = i16::from_be_bytes(tmp);
 
-    for _i in 1..ncolumns {
-        (position, _, _) = parse_lr_tupledata_column(buffer, position);
+    for _i in 0..ncolumns {
+        (position, _) = parse_lr_tupledata_column(buffer, position);
     }
-    ncolumns
+    (position, ncolumns)
 }
 
-fn parse_lr_tupledata_column(buffer: &PqBytes, mut position: usize) -> (usize, char, usize) {
-    let kind: char = buffer[position] as char;
+fn parse_lr_tupledata_column(buffer: &PqBytes, mut position: usize) -> (usize, u8) {
+    let kind = buffer[position];
     position += 1;
 
-    let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
-    position += 4;
-    let length: usize = i32::from_be_bytes(tmp).try_into().unwrap();
+    match kind {
+        b'n' | b'u' => println!("\tcolumn kind: {}", kind as char),
+        b't' => {
+            let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
+            position += 4;
 
-    position += length;
-    println!("column kind: {kind}, length: {length}");
-    (position, kind, length)
+            let length: usize = i32::from_be_bytes(tmp).try_into().unwrap();
+
+            let t: String =
+                String::from_utf8(buffer[position..(position + length)].to_vec()).unwrap();
+            position += length;
+
+            println!("\tcolumn kind: {}, length: {length}, '{t}'", kind as char);
+        }
+        b'b' => {
+            let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
+            position += 4;
+
+            let length: usize = i32::from_be_bytes(tmp).try_into().unwrap();
+            position += length;
+
+            println!("\tcolumn kind: {}, length: {length}", kind as char);
+        }
+        _ => panic!("Unknown kind: {}", kind as char),
+    }
+    (position, kind)
 }

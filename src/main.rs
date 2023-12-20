@@ -30,7 +30,9 @@ fn main() {
     }
 
     loop {
-        let buffer = client.copy_data(false).expect("Error while reading data. Check if the publication was created before the slot");
+        let buffer = client.copy_data(false).expect(
+            "Error while reading data. Check if the publication was created before the slot",
+        );
 
         match buffer[0] {
             replication_protocol::PRIMARY_KEEPALIVE_ID => {
@@ -48,7 +50,9 @@ fn main() {
             replication_protocol::XLOG_DATA_ID => {
                 let ret = replication_protocol::parse_xlogdata(&buffer);
                 let (start, current, time, message) = ret.unwrap();
-                println!("XLogData, start {start}, current {current}, time {time}, message: {message}");
+                println!(
+                    "XLogData, start {start}, current {current}, time {time}, message: {message}"
+                );
             }
             _ => eprintln!("Unrecognized message: {}", buffer[0]),
         }
