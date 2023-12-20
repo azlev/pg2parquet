@@ -30,3 +30,15 @@ impl std::fmt::Display for Pgtime {
         write!(f, "{}", dt.format("%Y-%m-%d %H:%M:%S.%f"))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::postgres::pgtime::Pgtime;
+
+    #[test]
+    fn pg_epoch() {
+        let bytes: [u8; 8] = [0, 0, 0, 0, 0, 0, 0, 0];
+        let pgtime = Pgtime::from_be_bytes(bytes);
+        assert_eq!(format!("{pgtime}"), "2000-01-01 00:00:00.000000000");
+    }
+}
