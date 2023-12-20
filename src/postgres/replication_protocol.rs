@@ -78,6 +78,16 @@ impl fmt::Debug for ParseError {
     }
 }
 
+fn parse_string(buffer: &PqBytes, mut position: usize) -> (usize, String) {
+    let mut name: String = String::from("");
+    while buffer[position] != b'\0' {
+        name.push(buffer[position] as char);
+        position += 1;
+    }
+    position += 1;
+    (position, name)
+}
+
 // https://www.postgresql.org/docs/16/protocol-logicalrep-message-formats.html
 pub fn parse_xlogdata(buffer: &PqBytes) -> Result<(Lsn, Lsn, Pgtime, char), ParseError> {
     let mut pos = 1;
@@ -181,19 +191,12 @@ fn parse_lr_relation(buffer: &PqBytes, mut position: usize, streaming: bool) -> 
     position += 4;
     let oid: i32 = i32::from_be_bytes(tmp);
 
-    let mut namespace: String = String::from("");
-    while buffer[position] != b'\0' {
-        namespace.push(buffer[position] as char);
-        position += 1;
-    }
-    position += 1;
+    let namespace: String;
+    (position, namespace) = parse_string(buffer, position);
 
-    let mut relation: String = String::from("");
-    while buffer[position] != b'\0' {
-        relation.push(buffer[position] as char);
-        position += 1;
-    }
-    position += 1;
+
+    let relation: String;
+    (position, relation) = parse_string(buffer, position);
 
     let replica_identity = buffer[position];
     position += 1;
@@ -212,14 +215,10 @@ fn parse_lr_relation(buffer: &PqBytes, mut position: usize, streaming: bool) -> 
 
 fn parse_lr_relation_column(buffer: &PqBytes, mut position: usize) -> usize {
     let flags = buffer[position];
+    position += 1;
 
-    position += 1;
-    let mut name: String = String::from("");
-    while buffer[position] != b'\0' {
-        name.push(buffer[position] as char);
-        position += 1;
-    }
-    position += 1;
+    let name: String;
+    (position, name) = parse_string(buffer, position);
 
     let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
     position += 4;
