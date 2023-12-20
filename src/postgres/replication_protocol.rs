@@ -3,6 +3,7 @@
 use std::fmt;
 
 use libpq::connection::PqBytes;
+use libpq::Oid;
 
 use crate::postgres::pglsn::Lsn;
 use crate::postgres::pgtime::Pgtime;
@@ -184,7 +185,7 @@ fn parse_lr_relation(buffer: &PqBytes, mut position: usize, streaming: bool) -> 
     }
     let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
     position += 4;
-    let oid: i32 = i32::from_be_bytes(tmp);
+    let oid: Oid = i32::from_be_bytes(tmp) as Oid;
 
     let namespace: String;
     (position, namespace) = parse_string(buffer, position);
@@ -216,7 +217,7 @@ fn parse_lr_relation_column(buffer: &PqBytes, mut position: usize) -> usize {
 
     let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
     position += 4;
-    let oid: i32 = i32::from_be_bytes(tmp);
+    let oid: Oid = i32::from_be_bytes(tmp) as Oid;
 
     let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
     position += 4;
@@ -230,7 +231,7 @@ fn parse_lr_dml_message(
     buffer: &PqBytes,
     mut position: usize,
     streaming: bool,
-) -> (usize, i32, i32, char) {
+) -> (usize, i32, Oid, char) {
     let mut xid: i32 = 0;
     if streaming {
         let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
@@ -240,7 +241,7 @@ fn parse_lr_dml_message(
 
     let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
     position += 4;
-    let oid: i32 = i32::from_be_bytes(tmp);
+    let oid: Oid = i32::from_be_bytes(tmp) as Oid;
 
     let kind: char = buffer[position] as char;
     position += 1;
