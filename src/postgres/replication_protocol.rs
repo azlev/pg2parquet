@@ -128,16 +128,28 @@ pub fn parse_xlogdata(buffer: &PqBytes) -> Result<(Lsn, Lsn, Pgtime, char), Pars
         }
         LOGICAL_REP_MSG_TYPE => eprintln!("type"),
         LOGICAL_REP_MSG_INSERT => {
-            let ret = parse_lr_insert_message(buffer, pos, streaming);
+            let ret = parse_lr_dml_message(buffer, pos, streaming);
+            eprintln!("insert, xid: {}, oid: {}, kind: {}", ret.1, ret.2, ret.3);
             pos = ret.0;
-            let (_, ncolumns) = parse_lr_tupledata(buffer, pos);
-            eprintln!(
-                "insert, xid: {}, oid: {}, new_tuple: {}, ncolumns: {}",
-                ret.1, ret.2, ret.3, ncolumns
-            );
+            (_, _) = parse_lr_tupledata(buffer, pos);
         }
-        LOGICAL_REP_MSG_UPDATE => eprintln!("update"),
-        LOGICAL_REP_MSG_DELETE => eprintln!("delete"),
+        LOGICAL_REP_MSG_UPDATE => {
+            let ret = parse_lr_dml_message(buffer, pos, streaming);
+            eprintln!("update, xid: {}, oid: {}, kind: {}", ret.1, ret.2, ret.3);
+            pos = ret.0;
+            if ret.3 != 'N' {
+                (pos, _) = parse_lr_tupledata(buffer, pos);
+                let _kind: char = buffer[pos] as char;
+                pos += 1;
+            }
+            (_, _) = parse_lr_tupledata(buffer, pos);
+        }
+        LOGICAL_REP_MSG_DELETE => {
+            let ret = parse_lr_dml_message(buffer, pos, streaming);
+            eprintln!("delete, xid: {}, oid: {}, kind: {}", ret.1, ret.2, ret.3);
+            pos = ret.0;
+            (_, _) = parse_lr_tupledata(buffer, pos);
+        }
         LOGICAL_REP_MSG_TRUNCATE => eprintln!("truncate"),
         _ => {
             return Result::Err(ParseError {
@@ -191,7 +203,7 @@ fn parse_lr_relation(buffer: &PqBytes, mut position: usize, streaming: bool) -> 
         position = parse_lr_relation_column(buffer, position)
     }
 
-    println!("relation: oid: {oid}, namespace: {namespace}, relation: {relation}, replica_identity: {replica_identity}, columns: {columns}");
+    eprintln!("relation: oid: {oid}, namespace: {namespace}, relation: {relation}, replica_identity: {replica_identity}, columns: {columns}");
     position
 }
 
@@ -210,11 +222,11 @@ fn parse_lr_relation_column(buffer: &PqBytes, mut position: usize) -> usize {
     position += 4;
     let modifiers: i32 = i32::from_be_bytes(tmp);
 
-    println!("\tcolumn: {name}, flags: {flags}, oid: {oid}, mod: {modifiers}");
+    eprintln!("\tcolumn: {name}, flags: {flags}, oid: {oid}, mod: {modifiers}");
     position
 }
 
-fn parse_lr_insert_message(
+fn parse_lr_dml_message(
     buffer: &PqBytes,
     mut position: usize,
     streaming: bool,
@@ -230,10 +242,10 @@ fn parse_lr_insert_message(
     position += 4;
     let oid: i32 = i32::from_be_bytes(tmp);
 
-    let new_tuple: char = buffer[position] as char;
+    let kind: char = buffer[position] as char;
     position += 1;
 
-    (position, xid, oid, new_tuple)
+    (position, xid, oid, kind)
 }
 
 fn parse_lr_tupledata(buffer: &PqBytes, mut position: usize) -> (usize, i16) {
@@ -241,6 +253,7 @@ fn parse_lr_tupledata(buffer: &PqBytes, mut position: usize) -> (usize, i16) {
     position += 2;
     let ncolumns = i16::from_be_bytes(tmp);
 
+    eprintln!("  columns: {ncolumns}");
     for _i in 0..ncolumns {
         (position, _) = parse_lr_tupledata_column(buffer, position);
     }
@@ -252,7 +265,7 @@ fn parse_lr_tupledata_column(buffer: &PqBytes, mut position: usize) -> (usize, u
     position += 1;
 
     match kind {
-        b'n' | b'u' => println!("\tcolumn kind: {}", kind as char),
+        b'n' | b'u' => eprintln!("\tcolumn kind: {}", kind as char),
         b't' => {
             let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
             position += 4;
@@ -263,7 +276,7 @@ fn parse_lr_tupledata_column(buffer: &PqBytes, mut position: usize) -> (usize, u
                 String::from_utf8(buffer[position..(position + length)].to_vec()).unwrap();
             position += length;
 
-            println!("\tcolumn kind: {}, length: {length}, '{t}'", kind as char);
+            eprintln!("\tcolumn kind: {}, length: {length}, '{t}'", kind as char);
         }
         b'b' => {
             let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
@@ -272,7 +285,7 @@ fn parse_lr_tupledata_column(buffer: &PqBytes, mut position: usize) -> (usize, u
             let length: usize = i32::from_be_bytes(tmp).try_into().unwrap();
             position += length;
 
-            println!("\tcolumn kind: {}, length: {length}", kind as char);
+            eprintln!("\tcolumn kind: {}, length: {length}", kind as char);
         }
         _ => panic!("Unknown kind: {}", kind as char),
     }
