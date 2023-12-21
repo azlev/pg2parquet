@@ -1,4 +1,5 @@
 use chrono::{DateTime, Duration, NaiveDateTime, Utc};
+use libpq::connection::PqBytes;
 
 // postgres/src/include/datatype/timestamp.h
 // postgres/src/backend/utils/adt/timestamp.c
@@ -19,6 +20,12 @@ impl Pgtime {
     pub fn from_be_bytes(bytes: [u8; 8]) -> Pgtime {
         let i = i64::from_be_bytes(bytes);
         Pgtime(i)
+    }
+
+    pub fn from_buffer(buffer: &PqBytes, mut position: usize) -> (usize, Pgtime) {
+        let tmp: [u8; 8] = buffer[position..(position + 8)].try_into().unwrap();
+        position += 8;
+        (position, Pgtime::from_be_bytes(tmp))
     }
 }
 

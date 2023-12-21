@@ -11,10 +11,11 @@ fn main() {
 
     let client = Connection::new(&config.conninfo).unwrap();
 
+    // add binary 'on' inside options to get data as binary
     let replication_command = &format!(
         "START_REPLICATION SLOT {configslot} \
     LOGICAL 000/000 \
-    (proto_version '3', \
+    (proto_version '4', \
     publication_names '{configpublication}', \
     messages 'on', \
     streaming 'on')",

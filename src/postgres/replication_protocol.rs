@@ -7,6 +7,7 @@ use libpq::Oid;
 
 use crate::postgres::pglsn::Lsn;
 use crate::postgres::pgtime::Pgtime;
+use crate::postgres::pgxid::Xid;
 
 pub const XLOG_DATA_ID: u8 = b'w';
 pub const PRIMARY_KEEPALIVE_ID: u8 = b'k';
@@ -41,8 +42,8 @@ const LOGICAL_REP_MSG_STREAM_PREPARE: u8 = b'p';
 pub fn parse_keepalive(buffer: &PqBytes) -> (Lsn, Pgtime, bool) {
     let lsn: Lsn;
     (_, lsn) = Lsn::from_buffer(buffer, 1);
-    let tmp2: [u8; 8] = buffer[9..17].try_into().unwrap();
-    let pgtime = Pgtime::from_be_bytes(tmp2);
+    let pgtime: Pgtime;
+    (_, pgtime) = Pgtime::from_buffer(buffer, 9);
     let should_reply = match buffer[17] {
         0 => false,
         _ => true,
@@ -54,7 +55,6 @@ pub fn create_keepalive() -> [u8; 34] {
     let mut reply: [u8; 34] = [0; 34];
     reply[0] = STANDBY_STATUS_UPDATE_ID;
     let now = Pgtime::now();
-    eprintln!("{now}");
     let dd: [u8; 8] = now.0.to_be_bytes();
     for i in 0..8 {
         reply[25 + i] = dd[i]
@@ -91,19 +91,19 @@ fn parse_string(buffer: &PqBytes, mut position: usize) -> (usize, String) {
 
 // https://www.postgresql.org/docs/16/protocol-logicalrep-message-formats.html
 pub fn parse_xlogdata(buffer: &PqBytes) -> Result<(Lsn, Lsn, Pgtime, char), ParseError> {
-    let mut pos = 1;
+    let mut position = 1;
 
     let start: Lsn;
-    (pos, start) = Lsn::from_buffer(buffer, pos);
+    (position, start) = Lsn::from_buffer(buffer, position);
 
     let current: Lsn;
-    (pos, current) = Lsn::from_buffer(buffer, pos);
+    (position, current) = Lsn::from_buffer(buffer, position);
 
-    let tmp: [u8; 8] = buffer[pos..(pos + 8)].try_into().unwrap();
-    pos += 8;
-    let time: Pgtime = Pgtime::from_be_bytes(tmp);
-    let id = buffer[pos];
-    pos += 1;
+    let time: Pgtime;
+    (position, time) = Pgtime::from_buffer(buffer, position);
+
+    let id = buffer[position];
+    position += 1;
     let streaming = false;
     match id {
         LOGICAL_REP_MSG_STREAM_START
@@ -116,7 +116,7 @@ pub fn parse_xlogdata(buffer: &PqBytes) -> Result<(Lsn, Lsn, Pgtime, char), Pars
         | LOGICAL_REP_MSG_ROLLBACK_PREPARED
         | LOGICAL_REP_MSG_STREAM_PREPARE => eprintln!("DEBUG: not mesage {id} skipped"),
         LOGICAL_REP_MSG_BEGIN => {
-            let ret = parse_lr_begin_message(buffer, pos);
+            let ret = parse_lr_begin_message(buffer, position);
             //pos = ret.0;
             let (lsn_final, transaction_start, xid) = (ret.1, ret.2, ret.3);
             eprintln!("begin: LSN_FINAL: {lsn_final}, time: {transaction_start}, xid: {xid}");
@@ -125,31 +125,31 @@ pub fn parse_xlogdata(buffer: &PqBytes) -> Result<(Lsn, Lsn, Pgtime, char), Pars
         LOGICAL_REP_MSG_COMMIT => eprintln!("commit"),
         LOGICAL_REP_MSG_ORIGIN => eprintln!("origin"),
         LOGICAL_REP_MSG_RELATION => {
-            _ = parse_lr_relation(buffer, pos, streaming);
+            _ = parse_lr_relation(buffer, position, streaming);
         }
         LOGICAL_REP_MSG_TYPE => eprintln!("type"),
         LOGICAL_REP_MSG_INSERT => {
-            let ret = parse_lr_dml_message(buffer, pos, streaming);
+            let ret = parse_lr_dml_message(buffer, position, streaming);
             eprintln!("insert, xid: {}, oid: {}, kind: {}", ret.1, ret.2, ret.3);
-            pos = ret.0;
-            (_, _) = parse_lr_tupledata(buffer, pos);
+            position = ret.0;
+            (_, _) = parse_lr_tupledata(buffer, position);
         }
         LOGICAL_REP_MSG_UPDATE => {
-            let ret = parse_lr_dml_message(buffer, pos, streaming);
+            let ret = parse_lr_dml_message(buffer, position, streaming);
             eprintln!("update, xid: {}, oid: {}, kind: {}", ret.1, ret.2, ret.3);
-            pos = ret.0;
+            position = ret.0;
             if ret.3 != 'N' {
-                (pos, _) = parse_lr_tupledata(buffer, pos);
-                let _kind: char = buffer[pos] as char;
-                pos += 1;
+                (position, _) = parse_lr_tupledata(buffer, position);
+                let _kind: char = buffer[position] as char;
+                position += 1;
             }
-            (_, _) = parse_lr_tupledata(buffer, pos);
+            (_, _) = parse_lr_tupledata(buffer, position);
         }
         LOGICAL_REP_MSG_DELETE => {
-            let ret = parse_lr_dml_message(buffer, pos, streaming);
+            let ret = parse_lr_dml_message(buffer, position, streaming);
             eprintln!("delete, xid: {}, oid: {}, kind: {}", ret.1, ret.2, ret.3);
-            pos = ret.0;
-            (_, _) = parse_lr_tupledata(buffer, pos);
+            position = ret.0;
+            (_, _) = parse_lr_tupledata(buffer, position);
         }
         LOGICAL_REP_MSG_TRUNCATE => eprintln!("truncate"),
         _ => {
@@ -161,27 +161,23 @@ pub fn parse_xlogdata(buffer: &PqBytes) -> Result<(Lsn, Lsn, Pgtime, char), Pars
     Result::Ok((start, current, time, buffer[25] as char))
 }
 
-fn parse_lr_begin_message(buffer: &PqBytes, mut position: usize) -> (usize, Lsn, Pgtime, i32) {
+fn parse_lr_begin_message(buffer: &PqBytes, mut position: usize) -> (usize, Lsn, Pgtime, Xid) {
     let lsn_final: Lsn;
     (position, lsn_final) = Lsn::from_buffer(buffer, position);
 
-    let tmp2: [u8; 8] = buffer[position..(position + 8)].try_into().unwrap();
-    position += 8;
-    let transaction_start: Pgtime = Pgtime::from_be_bytes(tmp2);
+    let transaction_start: Pgtime;
+    (position, transaction_start) = Pgtime::from_buffer(buffer, position);
 
-    let tmp3: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
-    position += 4;
-    let xid: i32 = i32::from_be_bytes(tmp3);
+    let xid: Xid;
+    (position, xid) = Xid::from_buffer(buffer, position);
 
     (position, lsn_final, transaction_start, xid)
 }
 
 fn parse_lr_relation(buffer: &PqBytes, mut position: usize, streaming: bool) -> usize {
-    let mut _xid: i32 = 0;
+    let _xid: Xid;
     if streaming {
-        let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
-        position += 4;
-        _xid = i32::from_be_bytes(tmp);
+        (position, _xid) = Xid::from_buffer(buffer, position);
     }
     let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
     position += 4;
@@ -231,12 +227,10 @@ fn parse_lr_dml_message(
     buffer: &PqBytes,
     mut position: usize,
     streaming: bool,
-) -> (usize, i32, Oid, char) {
-    let mut xid: i32 = 0;
+) -> (usize, Xid, Oid, char) {
+    let mut xid: Xid = Xid(0u32);
     if streaming {
-        let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
-        position += 4;
-        xid = i32::from_be_bytes(tmp);
+        (position, xid) = Xid::from_buffer(buffer, position);
     }
 
     let tmp: [u8; 4] = buffer[position..(position + 4)].try_into().unwrap();
