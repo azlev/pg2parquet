@@ -6,3 +6,7 @@ edition = "2021"
 [dependencies]
 chrono = "0.4.31"
 libpq = "4.0.0"
+
+[package.metadata.scripts]
+db_docker_up="docker compose up -d"
+db_docker_down="docker compose down"
