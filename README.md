@@ -8,7 +8,7 @@ The main idea of this project is to create a very concise code, without unnecess
 
 Since there is so few parameters, I didn't bother to create a config file, just parameters.
 
-This code is tested only in postgres 15.
+This code is tested only in postgres 16.
 
 ## Compiling
 
